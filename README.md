@@ -45,3 +45,5 @@ npm run dev
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET`
+
+Atualização para novo deploy.
