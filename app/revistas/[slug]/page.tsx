@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { Reader } from '@/components/Reader';
+import Reader from '@/components/Reader';
 import { supabase, siteName } from '@/lib/supabase';
 import type { Magazine, TocItem } from '@/lib/types';
 
