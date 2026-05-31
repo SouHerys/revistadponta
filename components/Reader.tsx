@@ -195,7 +195,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     setMarked((items) => (items.includes(page) ? items.filter((p) => p !== page) : [...items, page].sort((a, b) => a - b)));
   }
 
-  function distance(a: Touch, b: Touch) {
+  function distance(a: { clientX: number; clientY: number }, b: { clientX: number; clientY: number }) {
     return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   }
 
