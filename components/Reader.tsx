@@ -405,25 +405,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         <div className="reader-note">{performanceNote}</div>
       )}
 
-      <div className="reader-main">
-        <aside className="reader-sidebar">
-          <button className="toc-item" onClick={toggleMark} disabled={!pdf}>
-            <strong><Star size={15} /> {marked.includes(page) ? 'Página marcada' : 'Marcar página atual'}</strong>
-            <small>Página {page}</small>
-          </button>
-          {marked.map((p) => (
-            <button className="toc-item" key={p} onClick={() => go(p)}>
-              <strong>Página marcada</strong><small>Ir para página {p}</small>
-            </button>
-          ))}
-          {toc.length ? toc.map((item) => (
-            <button className="toc-item" key={`${item.position}-${item.page}-${item.title}`} onClick={() => go(item.page)}>
-              <strong>{item.title}</strong>
-              <small>Página {item.page}{item.description ? ` — ${item.description}` : ''}</small>
-            </button>
-          )) : <div className="empty">Esta edição ainda não tem sumário.</div>}
-        </aside>
-
+      <div className="reader-main no-side-toc">
         <main className="pdf-stage" ref={stageRef} onClick={() => setSidebarOpen(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
           {textMode ? (
             <article className="text-reader">{text.split(/(?<=\.)\s+/).map((p, i) => <p key={i}>{p}</p>)}</article>
@@ -449,8 +431,39 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         </main>
       </div>
 
-      <div style={{ padding: '10px 16px', color: '#71717a', fontWeight: 800, fontSize: 13 }}>
-        {progress}% lido • Página {page}
+      <section className={`bottom-toc ${sidebarOpen ? 'open' : ''}`} aria-label="Sumário da revista">
+        <div className="bottom-toc-head">
+          <div>
+            <strong>Sumário</strong>
+            <small>{toc.length ? `${toc.length} itens da edição` : 'Nenhum item cadastrado'}</small>
+          </div>
+          <button className="reader-btn compact" onClick={toggleMark} disabled={!pdf}>
+            <Star size={15} /> {marked.includes(page) ? 'Marcada' : 'Marcar'}
+          </button>
+        </div>
+
+        <div className="bottom-toc-strip">
+          {marked.map((p) => (
+            <button className="bottom-toc-card marked" key={`mark-${p}`} onClick={() => go(p)}>
+              <span>★ Marcada</span>
+              <strong>Página {p}</strong>
+            </button>
+          ))}
+          {toc.length ? toc.map((item) => (
+            <button className="bottom-toc-card" key={`${item.position}-${item.page}-${item.title}`} onClick={() => go(item.page)}>
+              <span>Página {item.page}</span>
+              <strong>{item.title}</strong>
+              {item.description ? <small>{item.description}</small> : null}
+            </button>
+          )) : (
+            <div className="bottom-toc-empty">Cadastre itens de sumário no admin para eles aparecerem aqui.</div>
+          )}
+        </div>
+      </section>
+
+      <div className="reader-progress-bottom">
+        <span>{progress}% lido</span>
+        <strong>Página {page}</strong>
       </div>
 
       <style jsx global>{`
@@ -548,6 +561,152 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           .loading-spinner { animation: none; }
         }
 
+
+
+        .reader-main.no-side-toc {
+          grid-template-columns: 1fr !important;
+        }
+        .reader-main.no-side-toc .pdf-stage {
+          width: 100%;
+        }
+        .bottom-toc {
+          border-top: 1px solid #e5e7eb;
+          background: rgba(255,255,255,.96);
+          backdrop-filter: blur(12px);
+          padding: 12px 16px 14px;
+          display: none;
+        }
+        .bottom-toc.open {
+          display: block;
+          animation: rdpTocUp .16s ease-out;
+        }
+        @keyframes rdpTocUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .bottom-toc-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+        .bottom-toc-head strong {
+          display: block;
+          font-size: 16px;
+          color: #111827;
+        }
+        .bottom-toc-head small {
+          display: block;
+          color: #71717a;
+          font-weight: 700;
+          font-size: 12px;
+          margin-top: 2px;
+        }
+        .reader-btn.compact {
+          min-height: 38px;
+          padding: 0 12px;
+          gap: 7px;
+        }
+        .bottom-toc-strip {
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          padding: 2px 2px 8px;
+          scroll-snap-type: x proximity;
+          scrollbar-width: thin;
+        }
+        .bottom-toc-card {
+          appearance: none;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+          color: #111827;
+          border-radius: 16px;
+          padding: 12px 14px;
+          min-width: 190px;
+          max-width: 260px;
+          text-align: left;
+          cursor: pointer;
+          box-shadow: 0 8px 22px rgba(15,23,42,.06);
+          scroll-snap-align: start;
+        }
+        .bottom-toc-card:hover {
+          border-color: #111827;
+          transform: translateY(-1px);
+        }
+        .bottom-toc-card span {
+          display: block;
+          font-size: 11px;
+          color: #71717a;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+          margin-bottom: 5px;
+        }
+        .bottom-toc-card strong {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          font-size: 14px;
+          line-height: 1.25;
+        }
+        .bottom-toc-card small {
+          display: block;
+          margin-top: 6px;
+          color: #71717a;
+          font-size: 12px;
+          line-height: 1.25;
+        }
+        .bottom-toc-card.marked {
+          background: #111827;
+          color: #fff;
+          border-color: #111827;
+        }
+        .bottom-toc-card.marked span,
+        .bottom-toc-card.marked small {
+          color: rgba(255,255,255,.75);
+        }
+        .bottom-toc-empty {
+          width: 100%;
+          border: 1px dashed #d4d4d8;
+          border-radius: 16px;
+          color: #71717a;
+          padding: 14px;
+          font-weight: 800;
+          background: #fafafa;
+        }
+        .reader-progress-bottom {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 16px;
+          color: #71717a;
+          font-weight: 800;
+          font-size: 13px;
+          border-top: 1px solid #f1f5f9;
+          background: #fff;
+        }
+        .reader-progress-bottom strong {
+          color: #111827;
+        }
+        @media (max-width: 760px) {
+          .bottom-toc {
+            padding: 10px 10px 12px;
+          }
+          .bottom-toc.open {
+            position: sticky;
+            bottom: 0;
+            z-index: 15;
+            box-shadow: 0 -12px 30px rgba(15,23,42,.12);
+          }
+          .bottom-toc-card {
+            min-width: 168px;
+            padding: 11px 12px;
+          }
+          .bottom-toc-head strong { font-size: 15px; }
+        }
 
         .reader-note {
           margin: 10px 16px 0;
