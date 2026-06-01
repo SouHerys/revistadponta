@@ -98,6 +98,8 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   const [loadingPage, setLoadingPage] = useState(false);
   const [error, setError] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [turnDirection, setTurnDirection] = useState<'next' | 'prev' | ''>('');
 
   const loading = loadingDoc || loadingPage;
   const progress = useMemo(() => (pageCount ? Math.round((page / pageCount) * 100) : 0), [page, pageCount]);
@@ -172,6 +174,10 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       const task: RenderTask = pageObj.render({ canvasContext: ctx, viewport });
       renderTaskRef.current = task;
       await task.promise;
+      if (renderId === renderIdRef.current) {
+        setPreviewImage('');
+        window.setTimeout(() => setTurnDirection(''), 180);
+      }
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
         console.error(err);
@@ -226,7 +232,20 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
 
   function go(next: number) {
     if (!pdf) return;
-    setPage(Math.max(1, Math.min(next, pdf.numPages)));
+    const target = Math.max(1, Math.min(next, pdf.numPages));
+    if (target === page) return;
+
+    const canvas = canvasRef.current;
+    if (canvas && canvas.width && canvas.height) {
+      try {
+        setPreviewImage(canvas.toDataURL('image/jpeg', 0.42));
+      } catch {
+        setPreviewImage('');
+      }
+    }
+
+    setTurnDirection(target > page ? 'next' : 'prev');
+    setPage(target);
     setSidebarOpen(false);
   }
 
@@ -354,9 +373,20 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
             <article className="text-reader">{text.split(/(?<=\.)\s+/).map((p, i) => <p key={i}>{p}</p>)}</article>
           ) : (
             <div className="pdf-wrap" ref={wrapRef}>
-              <div className="pdf-card">
+              <div className={`pdf-card ${turnDirection ? `page-turn-${turnDirection}` : ""}`}>
                 <canvas ref={canvasRef} />
-                {loading && <div className="loading-card">Carregando página...</div>}
+                {loading && (
+                  <div className="loading-card improved-loading" aria-live="polite">
+                    <div className="loading-preview">
+                      {previewImage ? <img src={previewImage} alt="Prévia da página anterior" /> : <div className="preview-skeleton" />}
+                    </div>
+                    <div className="loading-copy">
+                      <span className="loading-spinner" />
+                      <strong>{loadingDoc ? 'Abrindo revista' : 'Preparando página'}</strong>
+                      <small>Página {page}{pageCount ? ` de ${pageCount}` : ''}</small>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -368,6 +398,100 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       </div>
 
       <style jsx global>{`
+
+        .pdf-card.page-turn-next canvas {
+          animation: rdpFlipNext .28s ease-out;
+          transform-origin: left center;
+        }
+        .pdf-card.page-turn-prev canvas {
+          animation: rdpFlipPrev .28s ease-out;
+          transform-origin: right center;
+        }
+        @keyframes rdpFlipNext {
+          0% { opacity: .74; transform: perspective(1200px) rotateY(-7deg) translateX(8px); filter: drop-shadow(-12px 0 18px rgba(0,0,0,.12)); }
+          100% { opacity: 1; transform: perspective(1200px) rotateY(0) translateX(0); filter: none; }
+        }
+        @keyframes rdpFlipPrev {
+          0% { opacity: .74; transform: perspective(1200px) rotateY(7deg) translateX(-8px); filter: drop-shadow(12px 0 18px rgba(0,0,0,.12)); }
+          100% { opacity: 1; transform: perspective(1200px) rotateY(0) translateX(0); filter: none; }
+        }
+        .improved-loading {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          gap: 16px;
+          background: linear-gradient(135deg, rgba(255,255,255,.86), rgba(244,244,245,.72));
+          backdrop-filter: blur(6px);
+          color: #111827;
+          text-align: center;
+          padding: 22px;
+          z-index: 5;
+        }
+        .loading-preview {
+          width: min(118px, 34vw);
+          aspect-ratio: 3/4;
+          border-radius: 14px;
+          background: #fff;
+          box-shadow: 0 18px 45px rgba(15,23,42,.18);
+          overflow: hidden;
+          border: 1px solid rgba(148,163,184,.25);
+          transform: rotate(-1.5deg);
+        }
+        .loading-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          opacity: .82;
+          filter: saturate(.9);
+        }
+        .preview-skeleton {
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(110deg, #fff 8%, #eef2f7 18%, #fff 33%);
+          background-size: 200% 100%;
+          animation: rdpShimmer 1.25s linear infinite;
+        }
+        @keyframes rdpShimmer {
+          to { background-position-x: -200%; }
+        }
+        .loading-copy {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          padding: 12px 18px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.9);
+          box-shadow: 0 10px 30px rgba(15,23,42,.1);
+          border: 1px solid rgba(148,163,184,.25);
+        }
+        .loading-copy strong {
+          font-size: 14px;
+          line-height: 1;
+        }
+        .loading-copy small {
+          color: #71717a;
+          font-weight: 700;
+          font-size: 12px;
+        }
+        .loading-spinner {
+          width: 18px;
+          height: 18px;
+          border-radius: 999px;
+          border: 2px solid #d4d4d8;
+          border-top-color: #111827;
+          animation: rdpSpin .8s linear infinite;
+        }
+        @keyframes rdpSpin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+          .pdf-card.page-turn-next canvas,
+          .pdf-card.page-turn-prev canvas,
+          .preview-skeleton,
+          .loading-spinner { animation: none; }
+        }
+
         .reader-shell.reader-fullscreen,
         .reader-shell:fullscreen {
           width: 100vw !important;
