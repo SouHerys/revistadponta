@@ -31,12 +31,11 @@ export default async function HomePage() {
               <span className="eyebrow">Revista digital</span>
 
               <h1 className="h1">
-                Leia a revista no celular, no computador e compartilhe páginas.
+                Leia a revista D'Ponta em qualquer dispositivo.
               </h1>
 
               <p className="lead">
-                Uma experiência de leitura moderna para {siteName}, com edições digitais,
-                sumário, links diretos por página e modo texto.
+                Uma experiência de leitura moderna para {siteName}, com diversas edições digitais.
               </p>
 
               <div className="actions">
@@ -44,12 +43,7 @@ export default async function HomePage() {
                   Ver edições
                 </a>
 
-                <a className="pill" href="/admin">
-                  Entrar no admin
-                </a>
-              </div>
-            </div>
-
+               
             <div className="hero-card">
               {featured?.cover_url ? (
                 <img className="cover" src={featured.cover_url} alt={featured.title} />
