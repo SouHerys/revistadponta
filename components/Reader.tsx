@@ -83,6 +83,8 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textCache = useRef<Record<number, string>>({});
+  const pageCache = useRef<Record<number, PDFPageProxy>>({});
+  const userChangedScale = useRef(false);
   const pinch = useRef<{ startDistance: number; startScale: number; previewScale: number } | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
   const renderIdRef = useRef(0);
@@ -98,26 +100,81 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   const [loadingPage, setLoadingPage] = useState(false);
   const [error, setError] = useState('');
   const [fullscreen, setFullscreen] = useState(false);
-  const [previewImage, setPreviewImage] = useState('');
   const [turnDirection, setTurnDirection] = useState<'next' | 'prev' | ''>('');
+  const [performanceNote, setPerformanceNote] = useState('');
 
   const loading = loadingDoc || loadingPage;
   const progress = useMemo(() => (pageCount ? Math.round((page / pageCount) * 100) : 0), [page, pageCount]);
 
+  function isMobile() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches;
+  }
+
+  async function getCachedPage(doc: PDFDocumentProxy, pageNumber: number) {
+    if (pageCache.current[pageNumber]) return pageCache.current[pageNumber];
+    const pageObj = await doc.getPage(pageNumber);
+    pageCache.current[pageNumber] = pageObj;
+    return pageObj;
+  }
+
+  function schedulePrefetch(doc: PDFDocumentProxy, currentPage: number) {
+    const candidates = [currentPage + 1];
+    const run = () => {
+      candidates.forEach((pageNumber) => {
+        if (pageNumber < 1 || pageNumber > doc.numPages || pageCache.current[pageNumber]) return;
+        doc.getPage(pageNumber)
+          .then((pageObj: PDFPageProxy) => { pageCache.current[pageNumber] = pageObj; })
+          .catch(() => undefined);
+      });
+    };
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(run, { timeout: 1200 });
+    } else {
+      window.setTimeout(run, 450);
+    }
+  }
+
   const loadDocument = useCallback(() => {
     let mounted = true;
     setError('');
+    setPerformanceNote('');
     setLoadingDoc(true);
     setPdf(null);
     setPageCount(0);
+    pageCache.current = {};
+    textCache.current = {};
 
     loadPdfJs()
-      .then((pdfjs) => pdfjs.getDocument({ url: pdfUrl, withCredentials: false }).promise)
-      .then((doc: PDFDocumentProxy) => {
+      .then((pdfjs) => pdfjs.getDocument({
+        url: pdfUrl,
+        withCredentials: false,
+        rangeChunkSize: 65536,
+      }).promise)
+      .then(async (doc: PDFDocumentProxy) => {
         if (!mounted) return;
+        const totalPages = doc.numPages || 0;
+        const safePage = Math.min(Math.max(1, readInitialPage()), totalPages || 1);
+
+        try {
+          const firstPage = await getCachedPage(doc, safePage);
+          const stage = stageRef.current;
+          if (stage && !userChangedScale.current) {
+            const viewport = firstPage.getViewport({ scale: 1 });
+            const fit = Math.max(0.45, Math.min(isMobile() ? 0.95 : 1.18, (stage.clientWidth - 24) / viewport.width));
+            setScale(fit);
+          }
+        } catch {
+          // Se não conseguir medir a página, continua com escala padrão.
+        }
+
+        if (totalPages > 80) {
+          setPerformanceNote('Esta edição é grande. Para carregar mais rápido no celular, use PDF compactado para web.');
+        }
+
         setPdf(doc);
-        setPageCount(doc.numPages || 0);
-        setPage((current) => Math.min(Math.max(1, current), doc.numPages || 1));
+        setPageCount(totalPages);
+        setPage(safePage);
+        schedulePrefetch(doc, safePage);
       })
       .catch((err: Error) => {
         if (!mounted) return;
@@ -155,14 +212,15 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     setError('');
 
     try {
-      const pageObj: PDFPageProxy = await pdf.getPage(page);
+      const pageObj: PDFPageProxy = await getCachedPage(pdf, page);
       if (renderId !== renderIdRef.current) return;
 
       const viewport = pageObj.getViewport({ scale });
       const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) throw new Error('Canvas indisponível');
 
-      const ratio = window.devicePixelRatio || 1;
+      const rawRatio = window.devicePixelRatio || 1;
+      const ratio = Math.min(rawRatio, isMobile() ? 1.25 : 1.6);
       canvas.width = Math.floor(viewport.width * ratio);
       canvas.height = Math.floor(viewport.height * ratio);
       canvas.style.width = `${Math.floor(viewport.width)}px`;
@@ -175,8 +233,8 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       renderTaskRef.current = task;
       await task.promise;
       if (renderId === renderIdRef.current) {
-        setPreviewImage('');
-        window.setTimeout(() => setTurnDirection(''), 180);
+        schedulePrefetch(pdf, page);
+        window.setTimeout(() => setTurnDirection(''), 140);
       }
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
@@ -235,16 +293,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     const target = Math.max(1, Math.min(next, pdf.numPages));
     if (target === page) return;
 
-    const canvas = canvasRef.current;
-    if (canvas && canvas.width && canvas.height) {
-      try {
-        setPreviewImage(canvas.toDataURL('image/jpeg', 0.42));
-      } catch {
-        setPreviewImage('');
-      }
-    }
-
-    setTurnDirection(target > page ? 'next' : 'prev');
+    setTurnDirection(!isMobile() && pageCount <= 80 ? (target > page ? 'next' : 'prev') : '');
     setPage(target);
     setSidebarOpen(false);
   }
@@ -254,10 +303,12 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     if (!stage) return;
     const canvasWidth = canvasRef.current?.getBoundingClientRect().width || 800;
     const target = Math.max(0.55, Math.min(2.4, ((stage.clientWidth - 24) / canvasWidth) * scale));
+    userChangedScale.current = true;
     setScale(target);
   }
 
   async function toggleFullscreen() {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches) return;
     const el = readerRef.current;
     if (!el) return;
     try {
@@ -318,6 +369,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     wrapRef.current.style.transform = '';
     wrapRef.current.style.transformOrigin = '';
     pinch.current = null;
+    userChangedScale.current = true;
     setScale(finalScale);
   }
 
@@ -349,6 +401,10 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         </div>
       )}
 
+      {performanceNote && !error && (
+        <div className="reader-note">{performanceNote}</div>
+      )}
+
       <div className="reader-main">
         <aside className="reader-sidebar">
           <button className="toc-item" onClick={toggleMark} disabled={!pdf}>
@@ -378,11 +434,11 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
                 {loading && (
                   <div className="loading-card improved-loading" aria-live="polite">
                     <div className="loading-preview">
-                      {previewImage ? <img src={previewImage} alt="Prévia da página anterior" /> : <div className="preview-skeleton" />}
+                      <div className="preview-skeleton" />
                     </div>
                     <div className="loading-copy">
                       <span className="loading-spinner" />
-                      <strong>{loadingDoc ? 'Abrindo revista' : 'Preparando página'}</strong>
+                      <strong>{loadingDoc ? 'Abrindo revista' : 'Carregando só esta página'}</strong>
                       <small>Página {page}{pageCount ? ` de ${pageCount}` : ''}</small>
                     </div>
                   </div>
@@ -400,11 +456,11 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       <style jsx global>{`
 
         .pdf-card.page-turn-next canvas {
-          animation: rdpFlipNext .28s ease-out;
+          animation: rdpFlipNext .18s ease-out;
           transform-origin: left center;
         }
         .pdf-card.page-turn-prev canvas {
-          animation: rdpFlipPrev .28s ease-out;
+          animation: rdpFlipPrev .18s ease-out;
           transform-origin: right center;
         }
         @keyframes rdpFlipNext {
@@ -492,6 +548,18 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           .loading-spinner { animation: none; }
         }
 
+
+        .reader-note {
+          margin: 10px 16px 0;
+          padding: 10px 14px;
+          border-radius: 14px;
+          background: #fff7ed;
+          border: 1px solid #fed7aa;
+          color: #9a3412;
+          font-weight: 800;
+          font-size: 13px;
+        }
+
         .reader-shell.reader-fullscreen,
         .reader-shell:fullscreen {
           width: 100vw !important;
@@ -513,17 +581,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         }
         @media (max-width: 760px) {
           .reader-toolbar .fullscreen {
-            display: inline-flex;
-          }
-          .reader-shell.reader-fullscreen .reader-toolbar,
-          .reader-shell:fullscreen .reader-toolbar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-          }
-          .reader-shell.reader-fullscreen .reader-main,
-          .reader-shell:fullscreen .reader-main {
-            height: calc(100vh - 138px);
+            display: none !important;
           }
         }
       `}</style>
