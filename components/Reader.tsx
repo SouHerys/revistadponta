@@ -37,7 +37,7 @@ function toast(message: string) {
   el.className = 'toast';
   el.textContent = message;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2400);
+  globalThis.setTimeout(() => el.remove(), 2400);
 }
 
 function loadPdfJs(): Promise<any> {
@@ -234,7 +234,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       await task.promise;
       if (renderId === renderIdRef.current) {
         schedulePrefetch(pdf, page);
-        window.setTimeout(() => setTurnDirection(''), 140);
+        globalThis.setTimeout(() => setTurnDirection(''), 140);
       }
     } catch (err: any) {
       if (err?.name !== 'RenderingCancelledException') {
@@ -380,22 +380,30 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
 
   return (
     <div ref={readerRef} className={`reader-shell ${sidebarOpen ? 'sidebar-open' : ''} ${fullscreen ? 'reader-fullscreen' : ''}`}>
-      <div className="reader-toolbar">
-        <button className="reader-btn primary toc-open" onClick={() => setSidebarOpen((v) => !v)}>
+      <div className="reader-toolbar polished-toolbar">
+        <button className={`reader-btn primary toc-open ${sidebarOpen ? 'active' : ''}`} onClick={() => setSidebarOpen((v) => !v)} aria-expanded={sidebarOpen}>
           <BookOpen size={18} /> Sumário
         </button>
-        <button className="reader-btn icon prev" onClick={() => go(page - 1)} disabled={!pdf || page <= 1}>‹</button>
-        <div className="reader-page-box pagebox">
-          <input value={page} onChange={(e) => go(Number(e.target.value || 1))} /> <span>/</span> <span>{pageCount || '?'}</span>
+
+        <div className="nav-cluster">
+          <button className="reader-btn icon prev" onClick={() => go(page - 1)} disabled={!pdf || page <= 1} aria-label="Página anterior">‹</button>
+          <div className="reader-page-box pagebox">
+            <input value={page} onChange={(e) => go(Number(e.target.value || 1))} aria-label="Página atual" /> <span>/</span> <span>{pageCount || '?'}</span>
+          </div>
+          <button className="reader-btn icon next" onClick={() => go(page + 1)} disabled={!pdf || page >= pageCount} aria-label="Próxima página">›</button>
         </div>
-        <button className="reader-btn icon next" onClick={() => go(page + 1)} disabled={!pdf || page >= pageCount}>›</button>
+
         <button className="reader-btn share" onClick={sharePage} disabled={!pdf}><Share2 size={17} /> Compartilhar</button>
         <button className="reader-btn fit" onClick={fitWidth} disabled={!pdf || textMode}><Maximize2 size={17} /> Ajustar</button>
-        <button className="reader-btn zoom zoom-out" onClick={() => changeZoom(-0.15)} disabled={!pdf || textMode} aria-label="Diminuir zoom"><ZoomOut size={17} /></button>
-        <span className="reader-zoom-label">{Math.round(scale * 100)}%</span>
-        <button className="reader-btn zoom zoom-in" onClick={() => changeZoom(0.15)} disabled={!pdf || textMode} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
+
+        <div className="zoom-cluster" aria-label="Controle de zoom">
+          <button className="reader-btn zoom zoom-out" onClick={() => changeZoom(-0.15)} disabled={!pdf || textMode} aria-label="Diminuir zoom"><ZoomOut size={17} /></button>
+          <span className="reader-zoom-label">{Math.round(scale * 100)}%</span>
+          <button className="reader-btn zoom zoom-in" onClick={() => changeZoom(0.15)} disabled={!pdf || textMode} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
+        </div>
+
         <button className="reader-btn fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />} Tela cheia</button>
-        <button className="reader-btn text" onClick={() => setTextMode((v) => !v)} disabled={!pdf}>{textMode ? <Copy size={17} /> : <Type size={17} />}</button>
+        <button className="reader-btn text" onClick={() => setTextMode((v) => !v)} disabled={!pdf}>{textMode ? <Copy size={17} /> : <Type size={17} />} <span>{textMode ? 'PDF' : 'Texto'}</span></button>
       </div>
 
       {error && (
@@ -413,7 +421,37 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         <div className="reader-note">{performanceNote}</div>
       )}
 
-      <div className="reader-main no-side-toc">
+      <div className="reader-main with-side-toc">
+        <aside className={`side-toc ${sidebarOpen ? 'open' : ''}`} aria-label="Sumário da revista">
+          <div className="side-toc-head">
+            <div>
+              <strong>Sumário</strong>
+              <small>{toc.length ? `${toc.length} itens da edição` : 'Nenhum item cadastrado'}</small>
+            </div>
+            <button className="reader-btn compact" onClick={toggleMark} disabled={!pdf}>
+              <Star size={15} /> {marked.includes(page) ? 'Marcada' : 'Marcar'}
+            </button>
+          </div>
+
+          <div className="side-toc-list">
+            {marked.map((p) => (
+              <button className="side-toc-card marked" key={`mark-${p}`} onClick={() => go(p)}>
+                <span>★ Marcada</span>
+                <strong>Página {p}</strong>
+              </button>
+            ))}
+            {toc.length ? toc.map((item) => (
+              <button className="side-toc-card" key={`${item.position}-${item.page}-${item.title}`} onClick={() => go(item.page)}>
+                <span>Página {item.page}</span>
+                <strong>{item.title}</strong>
+                {item.description ? <small>{item.description}</small> : null}
+              </button>
+            )) : (
+              <div className="side-toc-empty">Cadastre itens de sumário no admin para eles aparecerem aqui.</div>
+            )}
+          </div>
+        </aside>
+
         <main className="pdf-stage" ref={stageRef} onClick={() => setSidebarOpen(false)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
           {textMode ? (
             <article className="text-reader">{text.split(/(?<=\.)\s+/).map((p, i) => <p key={i}>{p}</p>)}</article>
@@ -438,36 +476,6 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           )}
         </main>
       </div>
-
-      <section className={`bottom-toc ${sidebarOpen ? 'open' : ''}`} aria-label="Sumário da revista">
-        <div className="bottom-toc-head">
-          <div>
-            <strong>Sumário</strong>
-            <small>{toc.length ? `${toc.length} itens da edição` : 'Nenhum item cadastrado'}</small>
-          </div>
-          <button className="reader-btn compact" onClick={toggleMark} disabled={!pdf}>
-            <Star size={15} /> {marked.includes(page) ? 'Marcada' : 'Marcar'}
-          </button>
-        </div>
-
-        <div className="bottom-toc-strip">
-          {marked.map((p) => (
-            <button className="bottom-toc-card marked" key={`mark-${p}`} onClick={() => go(p)}>
-              <span>★ Marcada</span>
-              <strong>Página {p}</strong>
-            </button>
-          ))}
-          {toc.length ? toc.map((item) => (
-            <button className="bottom-toc-card" key={`${item.position}-${item.page}-${item.title}`} onClick={() => go(item.page)}>
-              <span>Página {item.page}</span>
-              <strong>{item.title}</strong>
-              {item.description ? <small>{item.description}</small> : null}
-            </button>
-          )) : (
-            <div className="bottom-toc-empty">Cadastre itens de sumário no admin para eles aparecerem aqui.</div>
-          )}
-        </div>
-      </section>
 
       <div className="reader-progress-bottom">
         <span>{progress}% lido</span>
@@ -572,94 +580,191 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
 
 
 
+        .polished-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          padding: 14px;
+          background: rgba(255,255,255,.96);
+          border-bottom: 1px solid #e5e7eb;
+          position: sticky;
+          top: 0;
+          z-index: 20;
+          backdrop-filter: blur(14px);
+        }
+        .reader-btn {
+          appearance: none;
+          min-height: 44px;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+          color: #111827;
+          border-radius: 999px;
+          padding: 0 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 7px 18px rgba(15,23,42,.05);
+          transition: transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+        }
+        .reader-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          border-color: #111827;
+          box-shadow: 0 11px 26px rgba(15,23,42,.09);
+        }
+        .reader-btn:disabled {
+          opacity: .42;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .reader-btn.primary {
+          background: #111827;
+          color: #fff;
+          border-color: #111827;
+          min-width: 168px;
+        }
+        .reader-btn.primary.active {
+          background: #312e81;
+          border-color: #312e81;
+        }
+        .nav-cluster, .zoom-cluster {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 4px;
+          border: 1px solid #eef2f7;
+          background: #f8fafc;
+          border-radius: 999px;
+        }
+        .reader-btn.icon, .reader-btn.zoom {
+          width: 42px;
+          min-width: 42px;
+          height: 42px;
+          min-height: 42px;
+          padding: 0;
+          font-size: 28px;
+          line-height: 1;
+          box-shadow: none;
+        }
+        .reader-page-box {
+          min-width: 112px;
+          height: 42px;
+          border: 0;
+          background: #fff;
+          border-radius: 999px;
+          padding: 0 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          font-weight: 900;
+          box-shadow: inset 0 0 0 1px #e5e7eb;
+        }
+        .reader-page-box input {
+          width: 46px;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          font: inherit;
+          text-align: center;
+          color: #111827;
+        }
         .reader-zoom-label {
-          min-width: 56px;
+          min-width: 62px;
+          height: 42px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           text-align: center;
           font-weight: 900;
           color: #111827;
-          border: 1px solid #e5e7eb;
           background: #fff;
           border-radius: 999px;
-          padding: 10px 12px;
-          line-height: 1;
-        }
-        .reader-btn.zoom {
-          min-width: 44px;
           padding: 0 12px;
+          line-height: 1;
+          box-shadow: inset 0 0 0 1px #e5e7eb;
         }
+        .reader-btn.text span { display: inline; }
 
-        .reader-main.no-side-toc {
-          grid-template-columns: 1fr !important;
+        .reader-main.with-side-toc {
+          display: grid;
+          grid-template-columns: 0 minmax(0,1fr);
+          transition: grid-template-columns .18s ease;
+          min-height: 70vh;
         }
-        .reader-main.no-side-toc .pdf-stage {
-          width: 100%;
+        .reader-shell.sidebar-open .reader-main.with-side-toc {
+          grid-template-columns: minmax(260px, 320px) minmax(0,1fr);
         }
-        .bottom-toc {
-          border-top: 1px solid #e5e7eb;
-          background: rgba(255,255,255,.96);
-          backdrop-filter: blur(12px);
-          padding: 12px 16px 14px;
-          display: none;
+        .side-toc {
+          overflow: hidden;
+          border-right: 1px solid #e5e7eb;
+          background: rgba(255,255,255,.98);
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity .16s ease;
         }
-        .bottom-toc.open {
-          display: block;
-          animation: rdpTocUp .16s ease-out;
+        .side-toc.open {
+          opacity: 1;
+          pointer-events: auto;
         }
-        @keyframes rdpTocUp {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .bottom-toc-head {
+        .side-toc-head {
+          position: sticky;
+          top: 0;
+          z-index: 2;
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 10px;
+          gap: 10px;
+          padding: 14px;
+          border-bottom: 1px solid #e5e7eb;
+          background: rgba(255,255,255,.96);
+          backdrop-filter: blur(10px);
         }
-        .bottom-toc-head strong {
+        .side-toc-head strong {
           display: block;
-          font-size: 16px;
+          font-size: 17px;
           color: #111827;
         }
-        .bottom-toc-head small {
+        .side-toc-head small {
           display: block;
           color: #71717a;
-          font-weight: 700;
+          font-weight: 800;
           font-size: 12px;
-          margin-top: 2px;
+          margin-top: 3px;
         }
         .reader-btn.compact {
-          min-height: 38px;
-          padding: 0 12px;
-          gap: 7px;
+          min-height: 36px;
+          padding: 0 11px;
+          gap: 6px;
+          font-size: 12px;
+          box-shadow: none;
         }
-        .bottom-toc-strip {
-          display: flex;
-          gap: 10px;
-          overflow-x: auto;
-          padding: 2px 2px 8px;
-          scroll-snap-type: x proximity;
-          scrollbar-width: thin;
+        .side-toc-list {
+          height: calc(70vh - 65px);
+          overflow: auto;
+          padding: 12px;
         }
-        .bottom-toc-card {
+        .side-toc-card {
           appearance: none;
+          width: 100%;
           border: 1px solid #e5e7eb;
           background: #fff;
           color: #111827;
           border-radius: 16px;
-          padding: 12px 14px;
-          min-width: 190px;
-          max-width: 260px;
+          padding: 12px 13px;
+          margin: 0 0 10px;
           text-align: left;
           cursor: pointer;
           box-shadow: 0 8px 22px rgba(15,23,42,.06);
-          scroll-snap-align: start;
         }
-        .bottom-toc-card:hover {
+        .side-toc-card:hover {
           border-color: #111827;
           transform: translateY(-1px);
         }
-        .bottom-toc-card span {
+        .side-toc-card span {
           display: block;
           font-size: 11px;
           color: #71717a;
@@ -668,32 +773,28 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           letter-spacing: .04em;
           margin-bottom: 5px;
         }
-        .bottom-toc-card strong {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
+        .side-toc-card strong {
+          display: block;
           font-size: 14px;
           line-height: 1.25;
         }
-        .bottom-toc-card small {
+        .side-toc-card small {
           display: block;
           margin-top: 6px;
           color: #71717a;
           font-size: 12px;
           line-height: 1.25;
         }
-        .bottom-toc-card.marked {
+        .side-toc-card.marked {
           background: #111827;
           color: #fff;
           border-color: #111827;
         }
-        .bottom-toc-card.marked span,
-        .bottom-toc-card.marked small {
+        .side-toc-card.marked span,
+        .side-toc-card.marked small {
           color: rgba(255,255,255,.75);
         }
-        .bottom-toc-empty {
-          width: 100%;
+        .side-toc-empty {
           border: 1px dashed #d4d4d8;
           border-radius: 16px;
           color: #71717a;
@@ -715,22 +816,6 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         }
         .reader-progress-bottom strong {
           color: #111827;
-        }
-        @media (max-width: 760px) {
-          .bottom-toc {
-            padding: 10px 10px 12px;
-          }
-          .bottom-toc.open {
-            position: sticky;
-            bottom: 0;
-            z-index: 15;
-            box-shadow: 0 -12px 30px rgba(15,23,42,.12);
-          }
-          .bottom-toc-card {
-            min-width: 168px;
-            padding: 11px 12px;
-          }
-          .bottom-toc-head strong { font-size: 15px; }
         }
 
         .reader-note {
@@ -764,10 +849,63 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           max-height: none;
         }
         @media (max-width: 760px) {
+          .polished-toolbar {
+            display: grid;
+            grid-template-columns: minmax(0,1fr) auto;
+            gap: 9px;
+            padding: 10px;
+          }
+          .reader-btn.primary {
+            min-width: 0;
+            width: 100%;
+          }
+          .nav-cluster {
+            grid-column: 1 / -1;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 44px minmax(0,1fr) 44px;
+          }
+          .reader-page-box {
+            min-width: 0;
+            width: 100%;
+          }
+          .reader-btn.share,
+          .reader-btn.fit,
+          .reader-btn.text {
+            min-height: 42px;
+            padding: 0 12px;
+            font-size: 13px;
+          }
+          .reader-btn.share { grid-column: 1 / -1; }
           .reader-toolbar .fullscreen,
-          .reader-toolbar .zoom,
-          .reader-zoom-label {
+          .zoom-cluster {
             display: none !important;
+          }
+          .reader-main.with-side-toc,
+          .reader-shell.sidebar-open .reader-main.with-side-toc {
+            display: block;
+            min-height: 70vh;
+          }
+          .side-toc {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: min(86vw, 340px);
+            z-index: 9999;
+            transform: translateX(-104%);
+            opacity: 1;
+            pointer-events: none;
+            transition: transform .18s ease;
+            box-shadow: 20px 0 55px rgba(15,23,42,.24);
+            border-right: 1px solid #e5e7eb;
+          }
+          .side-toc.open {
+            transform: translateX(0);
+            pointer-events: auto;
+          }
+          .side-toc-list {
+            height: calc(100vh - 68px);
           }
         }
       `}</style>
