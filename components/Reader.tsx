@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TocItem } from '@/lib/types';
-import { BookOpen, Copy, Maximize2, RefreshCcw, Share2, Star, Type } from 'lucide-react';
+import { BookOpen, Copy, Maximize2, Minimize2, RefreshCcw, Share2, Star, Type } from 'lucide-react';
 
 type PDFDocumentProxy = any;
 type PDFPageProxy = any;
@@ -78,6 +78,7 @@ function distance(a: { clientX: number; clientY: number }, b: { clientX: number;
 }
 
 export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
+  const readerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -96,6 +97,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   const [loadingDoc, setLoadingDoc] = useState(true);
   const [loadingPage, setLoadingPage] = useState(false);
   const [error, setError] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
 
   const loading = loadingDoc || loadingPage;
   const progress = useMemo(() => (pageCount ? Math.round((page / pageCount) * 100) : 0), [page, pageCount]);
@@ -130,6 +132,14 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   }, [pdfUrl]);
 
   useEffect(() => loadDocument(), [loadDocument]);
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      setFullscreen(Boolean(document.fullscreenElement));
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
 
   const renderPage = useCallback(async () => {
     if (!pdf || textMode) return;
@@ -228,6 +238,24 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     setScale(target);
   }
 
+  async function toggleFullscreen() {
+    const el = readerRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setFullscreen(false);
+      } else if (el.requestFullscreen) {
+        await el.requestFullscreen();
+        setFullscreen(true);
+      } else {
+        setFullscreen((current) => !current);
+      }
+    } catch {
+      setFullscreen((current) => !current);
+    }
+  }
+
   async function sharePage() {
     const url = new URL(window.location.href);
     url.searchParams.set('p', String(page));
@@ -275,7 +303,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
   }
 
   return (
-    <div className={`reader-shell ${sidebarOpen ? 'sidebar-open' : ''}`}>
+    <div ref={readerRef} className={`reader-shell ${sidebarOpen ? 'sidebar-open' : ''} ${fullscreen ? 'reader-fullscreen' : ''}`}>
       <div className="reader-toolbar">
         <button className="reader-btn primary toc-open" onClick={() => setSidebarOpen((v) => !v)}>
           <BookOpen size={18} /> Sumário
@@ -287,6 +315,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         <button className="reader-btn icon next" onClick={() => go(page + 1)} disabled={!pdf || page >= pageCount}>›</button>
         <button className="reader-btn share" onClick={sharePage} disabled={!pdf}><Share2 size={17} /> Compartilhar</button>
         <button className="reader-btn fit" onClick={fitWidth} disabled={!pdf || textMode}><Maximize2 size={17} /> Ajustar</button>
+        <button className="reader-btn fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />} Tela cheia</button>
         <button className="reader-btn text" onClick={() => setTextMode((v) => !v)} disabled={!pdf}>{textMode ? <Copy size={17} /> : <Type size={17} />}</button>
       </div>
 
@@ -337,6 +366,43 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
       <div style={{ padding: '10px 16px', color: '#71717a', fontWeight: 800, fontSize: 13 }}>
         {progress}% lido • Página {page}
       </div>
+
+      <style jsx global>{`
+        .reader-shell.reader-fullscreen,
+        .reader-shell:fullscreen {
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: none !important;
+          border-radius: 0 !important;
+          background: #f4f4f5;
+          overflow: hidden;
+          z-index: 999999;
+        }
+        .reader-shell.reader-fullscreen .reader-main,
+        .reader-shell:fullscreen .reader-main {
+          height: calc(100vh - 126px);
+        }
+        .reader-shell.reader-fullscreen .pdf-stage,
+        .reader-shell:fullscreen .pdf-stage {
+          height: 100%;
+          max-height: none;
+        }
+        @media (max-width: 760px) {
+          .reader-toolbar .fullscreen {
+            display: inline-flex;
+          }
+          .reader-shell.reader-fullscreen .reader-toolbar,
+          .reader-shell:fullscreen .reader-toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+          }
+          .reader-shell.reader-fullscreen .reader-main,
+          .reader-shell:fullscreen .reader-main {
+            height: calc(100vh - 138px);
+          }
+        }
+      `}</style>
     </div>
   );
 }
