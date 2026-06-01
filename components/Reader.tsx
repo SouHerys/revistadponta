@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TocItem } from '@/lib/types';
-import { BookOpen, Copy, Maximize2, Minimize2, RefreshCcw, Share2, Star, Type } from 'lucide-react';
+import { BookOpen, Copy, Maximize2, Minimize2, RefreshCcw, Share2, Star, Type, ZoomIn, ZoomOut } from 'lucide-react';
 
 type PDFDocumentProxy = any;
 type PDFPageProxy = any;
@@ -130,7 +130,7 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
       (window as any).requestIdleCallback(run, { timeout: 1200 });
     } else {
-      window.setTimeout(run, 450);
+      globalThis.setTimeout(run, 450);
     }
   }
 
@@ -298,6 +298,11 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
     setSidebarOpen(false);
   }
 
+  function changeZoom(delta: number) {
+    userChangedScale.current = true;
+    setScale((current) => Math.max(0.45, Math.min(3.2, Number((current + delta).toFixed(2)))));
+  }
+
   function fitWidth() {
     const stage = stageRef.current;
     if (!stage) return;
@@ -386,6 +391,9 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
         <button className="reader-btn icon next" onClick={() => go(page + 1)} disabled={!pdf || page >= pageCount}>›</button>
         <button className="reader-btn share" onClick={sharePage} disabled={!pdf}><Share2 size={17} /> Compartilhar</button>
         <button className="reader-btn fit" onClick={fitWidth} disabled={!pdf || textMode}><Maximize2 size={17} /> Ajustar</button>
+        <button className="reader-btn zoom zoom-out" onClick={() => changeZoom(-0.15)} disabled={!pdf || textMode} aria-label="Diminuir zoom"><ZoomOut size={17} /></button>
+        <span className="reader-zoom-label">{Math.round(scale * 100)}%</span>
+        <button className="reader-btn zoom zoom-in" onClick={() => changeZoom(0.15)} disabled={!pdf || textMode} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
         <button className="reader-btn fullscreen" onClick={toggleFullscreen}>{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />} Tela cheia</button>
         <button className="reader-btn text" onClick={() => setTextMode((v) => !v)} disabled={!pdf}>{textMode ? <Copy size={17} /> : <Type size={17} />}</button>
       </div>
@@ -563,6 +571,23 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
 
 
 
+
+        .reader-zoom-label {
+          min-width: 56px;
+          text-align: center;
+          font-weight: 900;
+          color: #111827;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+          border-radius: 999px;
+          padding: 10px 12px;
+          line-height: 1;
+        }
+        .reader-btn.zoom {
+          min-width: 44px;
+          padding: 0 12px;
+        }
+
         .reader-main.no-side-toc {
           grid-template-columns: 1fr !important;
         }
@@ -739,7 +764,9 @@ export default function Reader({ title, pdfUrl, toc }: ReaderProps) {
           max-height: none;
         }
         @media (max-width: 760px) {
-          .reader-toolbar .fullscreen {
+          .reader-toolbar .fullscreen,
+          .reader-toolbar .zoom,
+          .reader-zoom-label {
             display: none !important;
           }
         }
